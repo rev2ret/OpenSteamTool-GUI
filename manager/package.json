@@ -13,6 +13,7 @@
     "start": "concurrently -k \"npm run dev\" \"npm run electron\""
   },
   "dependencies": {
+    "adm-zip": "^0.5.17",
     "react": "^19.2.6",
     "react-dom": "^19.2.6"
   },

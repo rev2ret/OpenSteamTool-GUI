@@ -1,14 +1,18 @@
 const { app, BrowserWindow, ipcMain } = require('electron');
 const path = require('path');
-const { exec } = require('child_process');
 const fs = require('fs');
+const { exec } = require('child_process');
+const https = require('https');
+const AdmZip = require('adm-zip');
 
 let mainWindow;
 
 function createWindow() {
   mainWindow = new BrowserWindow({
-    width: 900,
-    height: 600,
+    width: 520,
+    height: 720,
+    minWidth: 420,
+    minHeight: 500,
     webPreferences: {
       preload: path.join(__dirname, 'preload.cjs'),
       nodeIntegration: false,
@@ -164,6 +168,84 @@ ipcMain.handle('install-mods', async (event, { steamPath, files }) => {
   });
 });
 
+ipcMain.handle('download-manifests', async (event, { steamPath, appid }) => {
+  return new Promise((resolve) => {
+    event.sender.send('download-status', `Checking database for AppID: ${appid}...`);
+    
+    // 1. Verify existence using Github API
+    const verifyUrl = `https://api.github.com/repos/SSMGAlt/ManifestHub2/branches/${appid}`;
+    const options = {
+      headers: { 'User-Agent': 'OpenSteamTool-Manager' }
+    };
+    
+    https.get(verifyUrl, options, (res) => {
+      if (res.statusCode !== 200) {
+        resolve({ success: false, message: `Manifests for AppID ${appid} were not found in the database (Status: ${res.statusCode}).` });
+        return;
+      }
+      
+      event.sender.send('download-status', `Found manifests for ${appid}. Downloading...`);
+      
+      const downloadUrl = `https://codeload.github.com/SSMGAlt/ManifestHub2/zip/refs/heads/${appid}`;
+      const tempZipPath = path.join(__dirname, `../../temp_${appid}.zip`);
+      const fileStream = fs.createWriteStream(tempZipPath);
+      
+      https.get(downloadUrl, options, (downloadRes) => {
+        downloadRes.pipe(fileStream);
+        
+        fileStream.on('finish', () => {
+          fileStream.close();
+          event.sender.send('download-status', 'Download complete. Extracting and installing...');
+          
+          try {
+            const zip = new AdmZip(tempZipPath);
+            const zipEntries = zip.getEntries();
+            
+            const luaDir = path.join(steamPath, 'config', 'lua');
+            const depotDir = path.join(steamPath, 'depotcache');
+            
+            if (!fs.existsSync(luaDir)) fs.mkdirSync(luaDir, { recursive: true });
+            if (!fs.existsSync(depotDir)) fs.mkdirSync(depotDir, { recursive: true });
+            
+            let installed = 0;
+            
+            for (const entry of zipEntries) {
+              if (entry.isDirectory) continue;
+              
+              const ext = path.extname(entry.name).toLowerCase();
+              if (ext === '.lua') {
+                fs.writeFileSync(path.join(luaDir, entry.name), entry.getData());
+                installed++;
+              } else if (ext === '.manifest') {
+                fs.writeFileSync(path.join(depotDir, entry.name), entry.getData());
+                installed++;
+              }
+            }
+            
+            // Clean up zip
+            fs.unlinkSync(tempZipPath);
+            
+            if (installed > 0) {
+              resolve({ success: true, message: `Successfully fetched and installed ${installed} files for ${appid}!` });
+            } else {
+              resolve({ success: false, message: 'Archive downloaded but no .lua or .manifest files were found inside.' });
+            }
+            
+          } catch (err) {
+            resolve({ success: false, message: 'Error extracting zip: ' + err.message });
+          }
+        });
+      }).on('error', (err) => {
+        fs.unlinkSync(tempZipPath);
+        resolve({ success: false, message: 'Download failed: ' + err.message });
+      });
+      
+    }).on('error', (err) => {
+      resolve({ success: false, message: 'API request failed: ' + err.message });
+    });
+  });
+});
+
 ipcMain.handle('restart-steam', async (event, steamPath) => {
   return new Promise((resolve) => {
     exec('taskkill /F /IM steam.exe', (error) => {
@@ -179,3 +261,96 @@ ipcMain.handle('restart-steam', async (event, steamPath) => {
     });
   });
 });
+
+ipcMain.handle('list-installed', async (event, steamPath) => {
+  try {
+    const luaDir = path.join(steamPath, 'config', 'lua');
+    const depotDir = path.join(steamPath, 'depotcache');
+
+    if (!fs.existsSync(luaDir)) return [];
+
+    const luaFiles = fs.readdirSync(luaDir).filter(f => f.endsWith('.lua'));
+    const games = [];
+
+    for (const file of luaFiles) {
+      const content = fs.readFileSync(path.join(luaDir, file), 'utf-8');
+      
+      // Try to extract AppID from the lua content or filename
+      let appId = null;
+      let gameName = file.replace('.lua', '');
+      const depotIds = [];
+
+      // Common pattern: addappid(XXXX, ...) or appid = XXXX
+      const appIdMatch = content.match(/addappid\s*\(\s*(\d+)/i) 
+        || content.match(/appid\s*=\s*(\d+)/i)
+        || content.match(/app_?id\s*[:=]\s*(\d+)/i)
+        || file.match(/^(\d+)\.lua$/);
+      
+      if (appIdMatch) {
+        appId = appIdMatch[1];
+      }
+
+      // Extract depot IDs from lua content
+      const depotMatches = content.matchAll(/adddepot\s*\(\s*(\d+)/gi);
+      for (const m of depotMatches) {
+        depotIds.push(m[1]);
+      }
+
+      // Count associated manifest files
+      let manifestCount = 0;
+      if (fs.existsSync(depotDir)) {
+        const manifests = fs.readdirSync(depotDir);
+        for (const depotId of depotIds) {
+          const found = manifests.filter(m => m.startsWith(depotId + '_'));
+          manifestCount += found.length;
+        }
+      }
+
+      games.push({
+        luaFile: file,
+        appId,
+        gameName,
+        depotIds,
+        manifestCount,
+        fileSize: fs.statSync(path.join(luaDir, file)).size,
+      });
+    }
+
+    return games;
+  } catch (e) {
+    return [];
+  }
+});
+
+ipcMain.handle('remove-game', async (event, { steamPath, luaFile, depotIds }) => {
+  try {
+    const luaDir = path.join(steamPath, 'config', 'lua');
+    const depotDir = path.join(steamPath, 'depotcache');
+    let removed = 0;
+
+    // Remove the lua script
+    const luaPath = path.join(luaDir, luaFile);
+    if (fs.existsSync(luaPath)) {
+      fs.unlinkSync(luaPath);
+      removed++;
+    }
+
+    // Remove associated manifests
+    if (fs.existsSync(depotDir) && depotIds && depotIds.length > 0) {
+      const manifests = fs.readdirSync(depotDir);
+      for (const depotId of depotIds) {
+        for (const manifest of manifests) {
+          if (manifest.startsWith(depotId + '_') && manifest.endsWith('.manifest')) {
+            fs.unlinkSync(path.join(depotDir, manifest));
+            removed++;
+          }
+        }
+      }
+    }
+
+    return { success: true, message: `Removed ${removed} files.` };
+  } catch (e) {
+    return { success: false, message: e.message };
+  }
+});
+
