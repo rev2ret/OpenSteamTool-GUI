@@ -113,11 +113,29 @@ body {
   gap: 7px;
 }
 
+@keyframes fadeInUp {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
 .titlebar-dot {
-  width: 11px;
-  height: 11px;
+  width: 12px;
+  height: 12px;
   border-radius: 50%;
+  box-shadow: inset 0 0 4px rgba(0,0,0,0.5);
+  cursor: pointer;
+  transition: transform 0.1s ease;
   opacity: 0.85;
+}
+
+.titlebar-dot:active {
+  transform: scale(0.85);
 }
 
 .titlebar-dot.red { background: #ff5f57; }
@@ -163,19 +181,29 @@ body {
 
 /* ── Steam Path Pill ───────────────────────────────────────── */
 .steam-path-pill {
-  margin: 0 20px 12px;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  background: var(--bg-input);
-  border: 1px solid var(--border-subtle);
-  border-radius: 999px;
-  padding: 6px 14px;
-  font-family: 'JetBrains Mono', monospace;
-  font-size: 0.7rem;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  padding: 0.5rem 1rem;
+  border-radius: 20px;
+  font-size: 0.85rem;
   color: var(--text-secondary);
-  overflow: hidden;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin: 0 20px 1.5rem;
+  backdrop-filter: blur(8px);
+  cursor: pointer;
+  transition: background 0.2s, transform 0.1s;
   -webkit-app-region: no-drag;
+}
+
+.steam-path-pill:hover {
+  background: rgba(255, 255, 255, 0.1);
+  transform: translateY(-1px);
+}
+
+.steam-path-pill:active {
+  transform: translateY(1px);
 }
 
 .steam-path-pill .dot {
@@ -267,12 +295,10 @@ body {
 
 /* ── Tab Panel Animation ───────────────────────────────────── */
 .tab-panel {
-  animation: panelIn 0.35s var(--transition-smooth) both;
-}
-
-@keyframes panelIn {
-  from { opacity: 0; transform: translateX(12px); }
-  to   { opacity: 1; transform: translateX(0); }
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+  animation: fadeInUp 0.3s ease-out forwards;
 }
 
 /* ── Card ──────────────────────────────────────────────────── */

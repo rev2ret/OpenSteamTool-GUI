@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const { exec } = require('child_process');
@@ -6,6 +6,48 @@ const https = require('https');
 const AdmZip = require('adm-zip');
 
 let mainWindow;
+
+ipcMain.on('close-app', () => {
+  if (mainWindow) mainWindow.close();
+});
+
+ipcMain.handle('select-directory', async () => {
+  if (!mainWindow) return null;
+  const { canceled, filePaths } = await dialog.showOpenDialog(mainWindow, {
+    properties: ['openDirectory'],
+    title: 'Select Steam Folder'
+  });
+  if (!canceled && filePaths.length > 0) {
+    return filePaths[0];
+  }
+  return null;
+});
+
+ipcMain.handle('search-game', async (event, term) => {
+  return new Promise((resolve) => {
+    const safeTerm = encodeURIComponent(term);
+    const url = `https://store.steampowered.com/api/storesearch/?term=${safeTerm}&l=english&cc=US`;
+    https.get(url, (res) => {
+      let data = '';
+      res.on('data', (chunk) => { data += chunk; });
+      res.on('end', () => {
+        try {
+          const json = JSON.parse(data);
+          if (json.items && json.items.length > 0) {
+            const results = json.items.map(item => ({ id: item.id.toString(), name: item.name }));
+            resolve({ success: true, results });
+          } else {
+            resolve({ success: true, results: [] });
+          }
+        } catch {
+          resolve({ success: false, results: [] });
+        }
+      });
+    }).on('error', () => {
+      resolve({ success: false, results: [] });
+    });
+  });
+});
 
 function createWindow() {
   mainWindow = new BrowserWindow({

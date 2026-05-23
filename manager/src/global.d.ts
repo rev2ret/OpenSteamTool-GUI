@@ -12,6 +12,9 @@ interface InstalledGame {
 declare global {
   interface Window {
     api: {
+      closeApp: () => void;
+      selectDirectory: () => Promise<string | null>;
+      searchGame: (term: string) => Promise<{ success: boolean; results: { id: string, name: string }[] }>;
       getFilePath: (file: File) => string;
       getSteamPath: () => Promise<string | null>;
       autoPatch: (steamPath: string) => Promise<{ success: boolean; message: string }>;

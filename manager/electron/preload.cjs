@@ -1,7 +1,10 @@
 const { contextBridge, ipcRenderer, webUtils } = require('electron');
 
 contextBridge.exposeInMainWorld('api', {
-  getFilePath: (file) => webUtils.getPathForFile(file),
+  getFilePath: (file) => (file && typeof file.path === 'string' ? file.path : null),
+  closeApp: () => ipcRenderer.send('close-app'),
+  selectDirectory: () => ipcRenderer.invoke('select-directory'),
+  searchGame: (term) => ipcRenderer.invoke('search-game', term),
   getSteamPath: () => ipcRenderer.invoke('get-steam-path'),
   autoPatch: (steamPath) => ipcRenderer.invoke('auto-patch', steamPath),
   installMods: (steamPath, files) => ipcRenderer.invoke('install-mods', { steamPath, files }),

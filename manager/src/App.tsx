@@ -23,6 +23,7 @@ function App() {
   const [isFetching, setIsFetching] = useState(false);
   const [lookedUpName, setLookedUpName] = useState<string | null>(null);
   const [lookedUpDlcs, setLookedUpDlcs] = useState<string[]>([]);
+  const [searchResults, setSearchResults] = useState<{id: string, name: string}[]>([]);
   const [includeDlcs, setIncludeDlcs] = useState(true);
   const [isLooking, setIsLooking] = useState(false);
   const lookupTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -75,30 +76,57 @@ function App() {
     if (activeTab === 'library' && steamPath) loadLibrary();
   }, [activeTab, steamPath, loadLibrary]);
 
-  // Auto-lookup game name when AppID changes
+  // Auto-lookup game name or search when input changes
   useEffect(() => {
     setLookedUpName(null);
+    setLookedUpDlcs([]);
+    setSearchResults([]);
     if (lookupTimer.current) clearTimeout(lookupTimer.current);
 
-    if (!appId.match(/^\d{3,}$/)) return; // need at least 3 digits
+    const trimmed = appId.trim();
+    if (!trimmed) return;
 
-    setIsLooking(true);
-    lookupTimer.current = setTimeout(async () => {
-      const result = await window.api.lookupAppId(appId);
-      if (result.success && result.name) {
-        setLookedUpName(result.name);
-        setLookedUpDlcs(result.dlcs || []);
-      } else {
-        setLookedUpName(null);
-        setLookedUpDlcs([]);
-      }
-      setIsLooking(false);
-    }, 500);
+    if (trimmed.match(/^\d+$/)) {
+      if (trimmed.length < 3) return; // Need at least 3 digits for an AppID
+      setIsLooking(true);
+      lookupTimer.current = setTimeout(async () => {
+        const result = await window.api.lookupAppId(trimmed);
+        if (result.success && result.name) {
+          setLookedUpName(result.name);
+          setLookedUpDlcs(result.dlcs || []);
+        } else {
+          setLookedUpName(null);
+          setLookedUpDlcs([]);
+        }
+        setIsLooking(false);
+      }, 500);
+    } else {
+      setIsLooking(true);
+      lookupTimer.current = setTimeout(async () => {
+        if (window.api.searchGame) {
+          const result = await window.api.searchGame(trimmed);
+          if (result.success) {
+            setSearchResults(result.results.slice(0, 5));
+          }
+        }
+        setIsLooking(false);
+      }, 600);
+    }
 
     return () => { if (lookupTimer.current) clearTimeout(lookupTimer.current); };
   }, [appId]);
 
   // ── Handlers ──────────────────────────────────────────────
+  
+  const handleSelectSteamPath = async () => {
+    if (window.api.selectDirectory) {
+      const dir = await window.api.selectDirectory();
+      if (dir) {
+        setSteamPath(dir);
+        showStatus('Steam path updated manually', 'success');
+      }
+    }
+  };
 
   const handleAutoPatch = async () => {
     if (!steamPath) return;
@@ -188,7 +216,7 @@ function App() {
         {/* Title Bar */}
         <div className="titlebar">
           <div className="titlebar-dots">
-            <div className="titlebar-dot red" />
+            <div className="titlebar-dot red" onClick={() => window.api.closeApp && window.api.closeApp()} />
             <div className="titlebar-dot yellow" />
             <div className="titlebar-dot green" />
           </div>
@@ -200,9 +228,9 @@ function App() {
         </div>
 
         {/* Steam Path */}
-        <div className="steam-path-pill">
+        <div className="steam-path-pill" onClick={handleSelectSteamPath} title="Click to manually select Steam folder">
           <div className={`dot ${steamPath ? 'connected' : 'disconnected'}`} />
-          <span>{steamPath || 'Steam not found'}</span>
+          <span>{steamPath || 'Steam not found (Click to Browse)'}</span>
         </div>
 
         {/* Tab Navigation */}
@@ -234,35 +262,40 @@ function App() {
                   Auto-Fetcher
                 </div>
                 <div className="card-desc">
-                  Enter a Steam AppID to instantly download and install manifests.
+                  Enter a Steam AppID or search by Game Name to download manifests.
                 </div>
 
                 <div className="input-row">
                   <input
                     type="text"
-                    placeholder="AppID (e.g. 271590)"
+                    placeholder="AppID or Game Name..."
                     className="input-field"
                     value={appId}
                     onChange={(e) => setAppId(e.target.value)}
-                    onKeyDown={(e) => e.key === 'Enter' && handleFetch()}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        if (appId.match(/^\d+$/)) handleFetch();
+                        else if (searchResults.length > 0) setAppId(searchResults[0].id);
+                      }
+                    }}
                   />
                   <button
                     onClick={handleFetch}
-                    disabled={!appId || isFetching}
+                    disabled={!appId.match(/^\d+$/) || isFetching}
                     className="btn btn-fetch"
                   >
                     {isFetching ? <span className="spinner" /> : 'Fetch'}
                   </button>
                 </div>
 
-                {/* Game name preview */}
-                {appId.match(/^\d{3,}$/) && (
-                  <div className="game-preview">
+                {/* Game name preview & Search Results */}
+                {appId.trim() !== '' && (
+                  <div className="game-preview" style={{ flexDirection: 'column', alignItems: 'flex-start' }}>
                     {isLooking ? (
-                      <><span className="spinner" /> Looking up...</>
-                    ) : lookedUpName ? (
-                      <>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}><span className="spinner" /> Searching...</div>
+                    ) : appId.match(/^\d+$/) ? (
+                      lookedUpName ? (
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap', width: '100%' }}>
                           <span className="game-preview-dot success" />
                           <span style={{ fontWeight: 600 }}>{lookedUpName}</span>
                           {lookedUpDlcs && lookedUpDlcs.length > 0 && (
@@ -277,9 +310,33 @@ function App() {
                             </label>
                           )}
                         </div>
-                      </>
+                      ) : (
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}><span className="game-preview-dot error" />Game not found</div>
+                      )
                     ) : (
-                      <><span className="game-preview-dot error" />Game not found</>
+                      searchResults.length > 0 ? (
+                        <div style={{ width: '100%', display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                          <div style={{ fontSize: '0.8rem', color: 'var(--text-tertiary)', marginBottom: '4px' }}>Search Results:</div>
+                          {searchResults.map((res) => (
+                            <div 
+                              key={res.id}
+                              onClick={() => setAppId(res.id)}
+                              style={{ 
+                                padding: '8px 12px', background: 'rgba(255,255,255,0.03)', borderRadius: '6px', 
+                                cursor: 'pointer', display: 'flex', justifyContent: 'space-between', border: '1px solid rgba(255,255,255,0.05)',
+                                transition: 'background 0.2s'
+                              }}
+                              onMouseOver={(e) => (e.currentTarget.style.background = 'rgba(255,255,255,0.08)')}
+                              onMouseOut={(e) => (e.currentTarget.style.background = 'rgba(255,255,255,0.03)')}
+                            >
+                              <span style={{ fontWeight: 500 }}>{res.name}</span>
+                              <span style={{ color: 'var(--text-tertiary)', fontSize: '0.85rem' }}>{res.id}</span>
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}><span className="game-preview-dot error" />No results found</div>
+                      )
                     )}
                   </div>
                 )}
