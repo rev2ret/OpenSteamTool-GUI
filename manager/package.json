@@ -17,6 +17,7 @@
   "build": {
     "appId": "com.rev2ret.opensteamtool",
     "productName": "OpenSteamTool",
+    "icon": "../Icon.png",
     "directories": {
       "output": "release"
     },
