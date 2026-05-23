@@ -309,15 +309,18 @@ ipcMain.handle('download-manifests', async (event, { steamPath, appid, dlcs }) =
 ipcMain.handle('restart-steam', async (event, steamPath) => {
   return new Promise((resolve) => {
     exec('taskkill /F /IM steam.exe', (error) => {
-      // It's okay if it fails (steam might not be running)
       const steamExe = path.join(steamPath, 'steam.exe');
-      exec(`start "" "${steamExe}"`, (startError) => {
-        if (startError) {
-          resolve({ success: false, message: startError.message });
-        } else {
-          resolve({ success: true, message: 'Steam is restarting...' });
-        }
-      });
+      try {
+        const { spawn } = require('child_process');
+        const child = spawn(steamExe, [], {
+          detached: true,
+          stdio: 'ignore'
+        });
+        child.unref();
+        resolve({ success: true, message: 'Steam is restarting...' });
+      } catch (startError) {
+        resolve({ success: false, message: startError.message });
+      }
     });
   });
 });
