@@ -1,17 +1,19 @@
-
-# SafeSteamTools
+# SafeSteamTools (OpenSteamTool-GUI)
 
 ![cpp](https://img.shields.io/badge/cpp-20%2B-green?logo=cplusplus)
 ![CMake](https://img.shields.io/badge/CMake-3.20%2B-green?logo=cmake)
 ![OnlyWindows](https://img.shields.io/badge/windows%20only-red?style=for-the-badge)
 
-[![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/OpenSteam001/OpenSteamTool)
+SafeSteamTools is a modern, beautifully designed GUI frontend for OpenSteamTool, a Windows DLL project built with CMake. 
 
-OpenSteamTool is a Windows DLL project built with CMake.
+## ✨ GUI Features
+- **Modern Interface**: A sleek, dark-mode glassmorphism interface built with React, Vite, and Electron.
+- **Smart Auto-Fetcher**: Instantly search the official Steam API by game name (no AppID hunting required!) to download required `.lua` configurations and manifests.
+- **Dedicated Online-Fixes Tab**: Automatically apply third-party online fixes (like Goldberg emulator). Select a target game from a dropdown and drop the `.zip` or `.rar` archive into the zone; the GUI parses your Steam library and handles the extraction silently.
+- **Dynamic Library Management**: View your active SafeSteamTools `.lua` patches, see depot/manifest counts, and easily remove them in one click.
+- **Auto-Patching**: 1-click Auto-Patch button compiles the C++ backend DLLs using CMake and smoothly injects them into your Steam installation.
 
-## Feature
-
-### Core Unlocks
+## Core Backend Unlocks
 - Unlock an unlimited number of unowned games.
 - Unlock all DLCs for unowned games.
 - Support auto load depot decryption keys from Lua config.
@@ -44,7 +46,13 @@ OpenSteamTool is a Windows DLL project built with CMake.
 - Steam Cloud synchronization support.(This is a huge project)
 - Add Auto Denuvo Authorization Sharing for Legitimate Accounts.
 
-## Usage
+## GUI Usage (Recommended)
+1. Download `SafeSteamTools.exe` from the Releases tab.
+2. Run the application.
+3. Your Steam path will automatically be detected. Use the **Auto-Patch** button at the bottom to build and install the DLLs.
+4. Use the **Fetch** tab to search for games, download configurations, and apply patches instantly.
+
+## Manual Usage (Advanced)
 1. Run `build.bat` from the project root to build the project.
 2. Copy generated `dwmapi.dll`, `xinput1_4.dll` and `OpenSteamTool.dll` to the Steam root directory.
 3. Create Lua directory (for example `C:\steam\config\lua`) and place Lua scripts there. The DLL will automatically load and execute them.
