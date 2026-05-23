@@ -171,23 +171,23 @@ ipcMain.handle('install-mods', async (event, { steamPath, files }) => {
   });
 });
 
-ipcMain.handle('download-manifests', async (event, { steamPath, appid }) => {
+const downloadManifestForAppId = (appid, steamPath, event, isDlc = false) => {
   return new Promise((resolve) => {
-    event.sender.send('download-status', `Checking database for AppID: ${appid}...`);
+    if (!isDlc) event.sender.send('download-status', `Checking database for AppID: ${appid}...`);
+    else event.sender.send('download-status', `Checking database for DLC: ${appid}...`);
     
-    // 1. Verify existence using Github API
     const verifyUrl = `https://api.github.com/repos/SSMGAlt/ManifestHub2/branches/${appid}`;
-    const options = {
-      headers: { 'User-Agent': 'OpenSteamTool-Manager' }
-    };
+    const options = { headers: { 'User-Agent': 'OpenSteamTool-Manager' } };
     
     https.get(verifyUrl, options, (res) => {
       if (res.statusCode !== 200) {
-        resolve({ success: false, message: `Manifests for AppID ${appid} were not found in the database (Status: ${res.statusCode}).` });
+        if (!isDlc) resolve({ success: false, message: `Manifests for AppID ${appid} were not found in the database (Status: ${res.statusCode}).` });
+        else resolve({ success: true, installed: 0 }); // Silently ignore DLCs without branches
         return;
       }
       
-      event.sender.send('download-status', `Found manifests for ${appid}. Downloading...`);
+      if (!isDlc) event.sender.send('download-status', `Found manifests for ${appid}. Downloading...`);
+      else event.sender.send('download-status', `Found manifests for DLC ${appid}. Downloading...`);
       
       const downloadUrl = `https://codeload.github.com/SSMGAlt/ManifestHub2/zip/refs/heads/${appid}`;
       const tempZipPath = path.join(__dirname, `../../temp_${appid}.zip`);
@@ -198,23 +198,20 @@ ipcMain.handle('download-manifests', async (event, { steamPath, appid }) => {
         
         fileStream.on('finish', () => {
           fileStream.close();
-          event.sender.send('download-status', 'Download complete. Extracting and installing...');
+          if (!isDlc) event.sender.send('download-status', `Download complete for ${appid}. Extracting...`);
+          else event.sender.send('download-status', `Download complete for DLC ${appid}. Extracting...`);
           
           try {
             const zip = new AdmZip(tempZipPath);
             const zipEntries = zip.getEntries();
-            
             const luaDir = path.join(steamPath, 'config', 'lua');
             const depotDir = path.join(steamPath, 'depotcache');
-            
             if (!fs.existsSync(luaDir)) fs.mkdirSync(luaDir, { recursive: true });
             if (!fs.existsSync(depotDir)) fs.mkdirSync(depotDir, { recursive: true });
             
             let installed = 0;
-            
             for (const entry of zipEntries) {
               if (entry.isDirectory) continue;
-              
               const ext = path.extname(entry.name).toLowerCase();
               if (ext === '.lua') {
                 fs.writeFileSync(path.join(luaDir, entry.name), entry.getData());
@@ -224,29 +221,47 @@ ipcMain.handle('download-manifests', async (event, { steamPath, appid }) => {
                 installed++;
               }
             }
-            
-            // Clean up zip
             fs.unlinkSync(tempZipPath);
             
-            if (installed > 0) {
-              resolve({ success: true, message: `Successfully fetched and installed ${installed} files for ${appid}!` });
-            } else {
-              resolve({ success: false, message: 'Archive downloaded but no .lua or .manifest files were found inside.' });
+            if (installed > 0) resolve({ success: true, installed, message: `Successfully fetched and installed files for ${appid}!` });
+            else {
+              if (isDlc) resolve({ success: true, installed: 0 });
+              else resolve({ success: false, message: 'Archive downloaded but no .lua or .manifest files were found inside.' });
             }
-            
           } catch (err) {
-            resolve({ success: false, message: 'Error extracting zip: ' + err.message });
+            if (isDlc) resolve({ success: true, installed: 0 });
+            else resolve({ success: false, message: 'Error extracting zip: ' + err.message });
           }
         });
       }).on('error', (err) => {
-        fs.unlinkSync(tempZipPath);
-        resolve({ success: false, message: 'Download failed: ' + err.message });
+        if (fs.existsSync(tempZipPath)) fs.unlinkSync(tempZipPath);
+        if (isDlc) resolve({ success: true, installed: 0 });
+        else resolve({ success: false, message: 'Download failed: ' + err.message });
       });
-      
     }).on('error', (err) => {
-      resolve({ success: false, message: 'API request failed: ' + err.message });
+      if (isDlc) resolve({ success: true, installed: 0 });
+      else resolve({ success: false, message: 'API request failed: ' + err.message });
     });
   });
+};
+
+ipcMain.handle('download-manifests', async (event, { steamPath, appid, dlcs }) => {
+  const baseResult = await downloadManifestForAppId(appid, steamPath, event, false);
+  
+  if (!baseResult.success) {
+    return baseResult;
+  }
+  
+  let totalInstalled = baseResult.installed || 0;
+  
+  if (dlcs && dlcs.length > 0) {
+    for (const dlcAppId of dlcs) {
+      const dlcResult = await downloadManifestForAppId(dlcAppId, steamPath, event, true);
+      totalInstalled += (dlcResult.installed || 0);
+    }
+  }
+  
+  return { success: true, message: `Successfully fetched and installed ${totalInstalled} files for ${appid}${dlcs && dlcs.length > 0 ? ' and its DLCs' : ''}!` };
 });
 
 ipcMain.handle('restart-steam', async (event, steamPath) => {
@@ -367,16 +382,20 @@ ipcMain.handle('lookup-appid', async (event, appid) => {
         try {
           const json = JSON.parse(data);
           if (json[appid] && json[appid].success) {
-            resolve({ success: true, name: json[appid].data.name });
+            resolve({ 
+              success: true, 
+              name: json[appid].data.name,
+              dlcs: json[appid].data.dlc ? json[appid].data.dlc.map(String) : []
+            });
           } else {
-            resolve({ success: false, name: null });
+            resolve({ success: false, name: null, dlcs: [] });
           }
         } catch {
-          resolve({ success: false, name: null });
+          resolve({ success: false, name: null, dlcs: [] });
         }
       });
     }).on('error', () => {
-      resolve({ success: false, name: null });
+      resolve({ success: false, name: null, dlcs: [] });
     });
   });
 });

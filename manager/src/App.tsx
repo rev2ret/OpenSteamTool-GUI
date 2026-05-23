@@ -22,6 +22,8 @@ function App() {
   const [appId, setAppId] = useState('');
   const [isFetching, setIsFetching] = useState(false);
   const [lookedUpName, setLookedUpName] = useState<string | null>(null);
+  const [lookedUpDlcs, setLookedUpDlcs] = useState<string[]>([]);
+  const [includeDlcs, setIncludeDlcs] = useState(true);
   const [isLooking, setIsLooking] = useState(false);
   const lookupTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -85,8 +87,10 @@ function App() {
       const result = await window.api.lookupAppId(appId);
       if (result.success && result.name) {
         setLookedUpName(result.name);
+        setLookedUpDlcs(result.dlcs || []);
       } else {
         setLookedUpName(null);
+        setLookedUpDlcs([]);
       }
       setIsLooking(false);
     }, 500);
@@ -116,9 +120,14 @@ function App() {
 
     setIsFetching(true);
     showStatus(`Fetching ${lookedUpName || appId}...`, 'info');
-    const result = await window.api.downloadManifests(steamPath, appId);
+    const dlcsToFetch = (includeDlcs && lookedUpDlcs) ? lookedUpDlcs : [];
+    const result = await window.api.downloadManifests(steamPath, appId, dlcsToFetch);
     showStatus(result.message, result.success ? 'success' : 'error');
-    if (result.success) { setAppId(''); setLookedUpName(null); }
+    if (result.success) { 
+      setAppId(''); 
+      setLookedUpName(null); 
+      setLookedUpDlcs([]);
+    }
     setIsFetching(false);
   };
 
@@ -252,7 +261,23 @@ function App() {
                     {isLooking ? (
                       <><span className="spinner" /> Looking up...</>
                     ) : lookedUpName ? (
-                      <><span className="game-preview-dot success" />{lookedUpName}</>
+                      <>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                          <span className="game-preview-dot success" />
+                          <span style={{ fontWeight: 600 }}>{lookedUpName}</span>
+                          {lookedUpDlcs && lookedUpDlcs.length > 0 && (
+                            <label style={{ display: 'flex', alignItems: 'center', gap: '6px', marginLeft: 'auto', fontSize: '0.85rem', cursor: 'pointer', background: 'rgba(255,255,255,0.05)', padding: '4px 8px', borderRadius: '4px', border: '1px solid rgba(255,255,255,0.1)' }}>
+                              <input 
+                                type="checkbox" 
+                                checked={includeDlcs} 
+                                onChange={(e) => setIncludeDlcs(e.target.checked)}
+                                style={{ margin: 0, accentColor: 'var(--accent-cyan)' }}
+                              />
+                              Include {lookedUpDlcs.length} DLC{lookedUpDlcs.length !== 1 ? 's' : ''}
+                            </label>
+                          )}
+                        </div>
+                      </>
                     ) : (
                       <><span className="game-preview-dot error" />Game not found</>
                     )}
@@ -363,10 +388,12 @@ function App() {
 
         {/* Bottom Bar */}
         <div className="bottom-bar">
-          <button onClick={handleAutoPatch} disabled={!steamPath} className="btn btn-primary">
-            Auto-Patch
-          </button>
-          <button onClick={handleRestart} disabled={!steamPath} className="btn btn-secondary">
+          {activeTab !== 'fetcher' && (
+            <button onClick={handleAutoPatch} disabled={!steamPath} className="btn btn-primary">
+              Auto-Patch
+            </button>
+          )}
+          <button onClick={handleRestart} disabled={!steamPath} className="btn btn-secondary" style={{ marginLeft: activeTab === 'fetcher' ? 'auto' : 0 }}>
             Restart Steam
           </button>
         </div>
