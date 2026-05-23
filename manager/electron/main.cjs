@@ -115,10 +115,87 @@ function createWindow() {
   } else {
     mainWindow.loadFile(path.join(__dirname, '../dist/index.html'));
   }
+// Helper to resolve Steam installation path from registry
+function getSteamPath() {
+  return new Promise((resolve) => {
+    exec('reg query "HKCU\\Software\\Valve\\Steam" /v SteamPath', (error, stdout) => {
+      if (error) {
+        resolve(null);
+        return;
+      }
+      const match = stdout.match(/SteamPath\s+REG_SZ\s+(.+)/);
+      if (match && match[1]) {
+        resolve(match[1].trim());
+      } else {
+        resolve(null);
+      }
+    });
+  });
 }
 
-app.whenReady().then(() => {
+// Automatically patch Steam DLLs on startup if they are missing
+async function autoPatchOnStartup() {
+  try {
+    const steamPath = await getSteamPath();
+    if (!steamPath) return;
+
+    const isPackaged = app.isPackaged;
+    const dllDir = isPackaged 
+      ? path.join(process.resourcesPath, 'dlls')
+      : path.join(__dirname, '../../dlls');
+
+    const dlls = ['OpenSteamTool.dll', 'dwmapi.dll', 'xinput1_4.dll'];
+
+    // Check if all DLLs are already present in the Steam directory
+    let allExist = true;
+    for (const dll of dlls) {
+      if (!fs.existsSync(path.join(steamPath, dll))) {
+        allExist = false;
+        break;
+      }
+    }
+
+    // If already patched, do not attempt to patch again (prevents killing Steam)
+    if (allExist) return;
+
+    const copyDlls = () => {
+      if (!fs.existsSync(dllDir)) return 0;
+      let copied = 0;
+      for (const dll of dlls) {
+        const src = path.join(dllDir, dll);
+        const dest = path.join(steamPath, dll);
+        if (fs.existsSync(src)) {
+          fs.copyFileSync(src, dest);
+          copied++;
+        }
+      }
+      return copied;
+    };
+
+    try {
+      copyDlls();
+    } catch (e) {
+      // If file copy fails (Steam is running and locking DLLs), kill Steam and copy
+      exec('taskkill /F /IM steam.exe /T', () => {
+        setTimeout(() => {
+          try {
+            copyDlls();
+          } catch (err) {
+            console.error('Failed to auto-patch DLLs on startup:', err);
+          }
+        }, 1500);
+      });
+    }
+  } catch (err) {
+    console.error('Error during auto-patch on startup:', err);
+  }
+}
+
+app.whenReady().then(async () => {
   createWindow();
+  
+  // Perform automatic DLL patching on startup
+  await autoPatchOnStartup();
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) {
@@ -136,41 +213,24 @@ app.on('window-all-closed', () => {
 // IPC Handlers
 
 ipcMain.handle('get-steam-path', async () => {
-  return new Promise((resolve) => {
-    exec('reg query "HKCU\\Software\\Valve\\Steam" /v SteamPath', (error, stdout) => {
-      if (error) {
-        resolve(null);
-        return;
-      }
-      const match = stdout.match(/SteamPath\s+REG_SZ\s+(.+)/);
-      if (match && match[1]) {
-        resolve(match[1].trim());
-      } else {
-        resolve(null);
-      }
-    });
-  });
+  return await getSteamPath();
 });
 
 ipcMain.handle('auto-patch', async (event, steamPath) => {
   return new Promise((resolve) => {
     try {
       const isPackaged = app.isPackaged;
-      const releaseDir = isPackaged 
+      const dllDir = isPackaged 
         ? path.join(process.resourcesPath, 'dlls')
-        : path.join(__dirname, '../../build/Release');
-      const debugDir = path.join(__dirname, '../../build/Debug');
+        : path.join(__dirname, '../../dlls');
       const rootDir = path.join(__dirname, '../../');
       const dlls = ['OpenSteamTool.dll', 'dwmapi.dll', 'xinput1_4.dll'];
       
       const copyDlls = () => {
         let copied = 0;
-        // Check Release first, then Debug
-        const buildDir = fs.existsSync(releaseDir) && fs.existsSync(path.join(releaseDir, dlls[0])) 
-          ? releaseDir : debugDir;
-
+        if (!fs.existsSync(dllDir)) return 0;
         for (const dll of dlls) {
-          const src = path.join(buildDir, dll);
+          const src = path.join(dllDir, dll);
           const dest = path.join(steamPath, dll);
           if (fs.existsSync(src)) {
             fs.copyFileSync(src, dest);
@@ -187,7 +247,7 @@ ipcMain.handle('auto-patch', async (event, steamPath) => {
           return;
         }
         
-        // If we reach here, DLLs are missing. Build them automatically!
+        // If DLLs are missing, build them from source automatically
         event.sender.send('patch-status', 'Building C++ DLLs from source... (This may take a few minutes)');
         exec('build.bat', { cwd: rootDir }, (error, stdout) => {
           if (error) {
@@ -195,7 +255,6 @@ ipcMain.handle('auto-patch', async (event, steamPath) => {
             return;
           }
           
-          // Try copying again after build
           copied = copyDlls();
           if (copied > 0) {
             resolve({ success: true, message: `Build successful! Patched Steam with ${copied} DLLs.` });

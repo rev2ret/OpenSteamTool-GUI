@@ -139,3 +139,9 @@ add_library(xinput1_4 SHARED
     xinput1_4/xinput1_4.cpp
     xinput1_4/xinput1_4.def
 )
+
+# Remove the 'lib' prefix on MinGW/GCC builds so they match Steam expectations
+set_target_properties(OpenSteamTool PROPERTIES PREFIX "")
+set_target_properties(dwmapi PROPERTIES PREFIX "")
+set_target_properties(xinput1_4 PROPERTIES PREFIX "")
+
