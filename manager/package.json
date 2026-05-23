@@ -21,7 +21,8 @@
       "output": "release"
     },
     "win": {
-      "target": "nsis"
+      "target": "portable",
+      "icon": "../Icon.png"
     },
     "extraResources": [
       {
