@@ -23,6 +23,7 @@ declare global {
       downloadManifests: (steamPath: string, appid: string, dlcs: string[]) => Promise<{ success: boolean; message: string }>;
       lookupAppId: (appid: string) => Promise<{ success: boolean; name: string | null; dlcs: string[] }>;
       listInstalled: (steamPath: string) => Promise<InstalledGame[]>;
+      listSteamApps: (steamPath: string) => Promise<{appId: string, name: string}[]>;
       removeGame: (steamPath: string, luaFile: string, depotIds: string[]) => Promise<{ success: boolean; message: string }>;
       restartSteam: (steamPath: string) => Promise<{ success: boolean; message: string }>;
       onPatchStatus: (callback: (msg: string) => void) => void;

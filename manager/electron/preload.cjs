@@ -12,6 +12,7 @@ contextBridge.exposeInMainWorld('api', {
   downloadManifests: (steamPath, appid, dlcs) => ipcRenderer.invoke('download-manifests', { steamPath, appid, dlcs }),
   lookupAppId: (appid) => ipcRenderer.invoke('lookup-appid', appid),
   listInstalled: (steamPath) => ipcRenderer.invoke('list-installed', steamPath),
+  listSteamApps: (steamPath) => ipcRenderer.invoke('list-steam-apps', steamPath),
   removeGame: (steamPath, luaFile, depotIds) => ipcRenderer.invoke('remove-game', { steamPath, luaFile, depotIds }),
   restartSteam: (steamPath) => ipcRenderer.invoke('restart-steam', steamPath),
   onPatchStatus: (callback) => ipcRenderer.on('patch-status', (event, msg) => callback(msg)),

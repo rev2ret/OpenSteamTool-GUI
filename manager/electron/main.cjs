@@ -428,6 +428,46 @@ ipcMain.handle('list-installed', async (event, steamPath) => {
   }
 });
 
+ipcMain.handle('list-steam-apps', async (event, steamPath) => {
+  try {
+    const vdfPath = path.join(steamPath, 'steamapps', 'libraryfolders.vdf');
+    if (!fs.existsSync(vdfPath)) return [];
+
+    const vdfContent = fs.readFileSync(vdfPath, 'utf8');
+    const pathRegex = /"path"\s+"([^"]+)"/g;
+    let match;
+    const apps = [];
+
+    while ((match = pathRegex.exec(vdfContent)) !== null) {
+      const libraryPath = match[1].replace(/\\\\/g, '\\');
+      const steamappsPath = path.join(libraryPath, 'steamapps');
+      if (fs.existsSync(steamappsPath)) {
+        const files = fs.readdirSync(steamappsPath);
+        for (const file of files) {
+          if (file.startsWith('appmanifest_') && file.endsWith('.acf')) {
+            const acfPath = path.join(steamappsPath, file);
+            const acfContent = fs.readFileSync(acfPath, 'utf8');
+            const appIdMatch = acfContent.match(/"appid"\s+"([^"]+)"/);
+            const nameMatch = acfContent.match(/"name"\s+"([^"]+)"/);
+            if (appIdMatch && nameMatch) {
+              apps.push({
+                appId: appIdMatch[1],
+                name: nameMatch[1]
+              });
+            }
+          }
+        }
+      }
+    }
+    
+    // Sort apps alphabetically
+    apps.sort((a, b) => a.name.localeCompare(b.name));
+    return apps;
+  } catch (err) {
+    return [];
+  }
+});
+
 ipcMain.handle('remove-game', async (event, { steamPath, luaFile, depotIds }) => {
   try {
     const luaDir = path.join(steamPath, 'config', 'lua');

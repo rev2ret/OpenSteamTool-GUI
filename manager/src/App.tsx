@@ -37,6 +37,7 @@ function App() {
 
   // Library
   const [games, setGames] = useState<InstalledGame[]>([]);
+  const [steamApps, setSteamApps] = useState<{appId: string, name: string}[]>([]);
   const [isLoadingLib, setIsLoadingLib] = useState(false);
   const [gameNames, setGameNames] = useState<Record<string, string>>({});
 
@@ -48,11 +49,18 @@ function App() {
   const loadLibrary = useCallback(async () => {
     if (!steamPath) return;
     setIsLoadingLib(true);
-    const list: InstalledGame[] = (await window.api.listInstalled(steamPath)) || [];
-    setGames(list);
+    
+    // Load SafeSteamTools lua games
+    const installed = await window.api.listInstalled(steamPath);
+    setGames(installed || []);
 
-    // Resolve game names from Steam for any that have an appId
-    const namesToResolve = list.filter(g => g.appId && !gameNames[g.appId]);
+    // Load ALL actual steam games from libraryfolders.vdf
+    if (window.api.listSteamApps) {
+      const apps = await window.api.listSteamApps(steamPath);
+      setSteamApps(apps || []);
+    }
+
+    const namesToResolve = installed.filter(g => g.appId && !gameNames[g.appId]);
     for (const g of namesToResolve) {
       if (!g.appId) continue;
       const result = await window.api.lookupAppId(g.appId);
@@ -467,9 +475,9 @@ function App() {
                     onChange={(e) => setSelectedFixAppId(e.target.value)}
                   >
                     <option value="" disabled>Select a game...</option>
-                    {games.map(g => (
-                      <option key={g.appId || g.luaFile} value={g.appId || ''}>
-                        {(g.appId && gameNames[g.appId]) || g.gameName} {g.appId ? `(${g.appId})` : ''}
+                    {steamApps.map(app => (
+                      <option key={app.appId} value={app.appId}>
+                        {app.name} ({app.appId})
                       </option>
                     ))}
                   </select>
@@ -491,8 +499,8 @@ function App() {
                     if (zipFile) {
                       const filePath = window.api.getFilePath(zipFile);
                       if (filePath && window.api.installOnlineFix) {
-                        const targetGame = games.find(g => g.appId === selectedFixAppId);
-                        const displayName = targetGame ? ((targetGame.appId && gameNames[targetGame.appId]) || targetGame.gameName) : selectedFixAppId;
+                        const targetApp = steamApps.find(a => a.appId === selectedFixAppId);
+                        const displayName = targetApp ? targetApp.name : selectedFixAppId;
                         showStatus(`Installing fix for ${displayName}...`, 'info');
                         const res = await window.api.installOnlineFix(steamPath, selectedFixAppId, filePath);
                         showStatus(res.message, res.success ? 'success' : 'error');
