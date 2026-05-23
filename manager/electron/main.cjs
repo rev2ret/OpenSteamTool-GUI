@@ -20,6 +20,7 @@ function createWindow() {
     titleBarStyle: 'hidden',
     backgroundColor: '#0f172a', // slate-900
     autoHideMenuBar: true,
+    icon: path.join(__dirname, 'icon.png')
   });
 
   const isDev = process.env.NODE_ENV === 'development';
