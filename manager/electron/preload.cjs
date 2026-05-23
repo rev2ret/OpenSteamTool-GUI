@@ -8,6 +8,7 @@ contextBridge.exposeInMainWorld('api', {
   getSteamPath: () => ipcRenderer.invoke('get-steam-path'),
   autoPatch: (steamPath) => ipcRenderer.invoke('auto-patch', steamPath),
   installMods: (steamPath, files) => ipcRenderer.invoke('install-mods', { steamPath, files }),
+  installOnlineFix: (steamPath, appId, zipPath) => ipcRenderer.invoke('install-online-fix', { steamPath, appId, zipPath }),
   downloadManifests: (steamPath, appid, dlcs) => ipcRenderer.invoke('download-manifests', { steamPath, appid, dlcs }),
   lookupAppId: (appid) => ipcRenderer.invoke('lookup-appid', appid),
   listInstalled: (steamPath) => ipcRenderer.invoke('list-installed', steamPath),

@@ -26,6 +26,7 @@ function App() {
   const [searchResults, setSearchResults] = useState<{id: string, name: string}[]>([]);
   const [includeDlcs, setIncludeDlcs] = useState(true);
   const [isLooking, setIsLooking] = useState(false);
+  const [dragHoveredAppId, setDragHoveredAppId] = useState<string | null>(null);
   const lookupTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Files
@@ -403,7 +404,39 @@ function App() {
                   {games.map((game, i) => {
                     const displayName = (game.appId && gameNames[game.appId]) || game.gameName;
                     return (
-                      <div className="card game-card" key={game.luaFile} style={{ animationDelay: `${i * 0.06}s` }}>
+                      <div 
+                        className={`card game-card ${dragHoveredAppId === game.appId ? 'drag-hover' : ''}`}
+                        key={game.luaFile} 
+                        style={{ animationDelay: `${i * 0.06}s` }}
+                        onDragOver={(e) => {
+                          e.preventDefault();
+                          if (game.appId) setDragHoveredAppId(game.appId);
+                        }}
+                        onDragLeave={(e) => {
+                          e.preventDefault();
+                          setDragHoveredAppId(null);
+                        }}
+                        onDrop={async (e) => {
+                          e.preventDefault();
+                          setDragHoveredAppId(null);
+                          if (!steamPath || !game.appId) return;
+
+                          const files = Array.from(e.dataTransfer.files);
+                          const zipFile = files.find(f => f.name.toLowerCase().endsWith('.zip') || f.name.toLowerCase().endsWith('.rar') || f.name.toLowerCase().endsWith('.7z'));
+                          
+                          if (zipFile) {
+                            const filePath = window.api.getFilePath(zipFile);
+                            if (filePath && window.api.installOnlineFix) {
+                              const displayName = (game.appId && gameNames[game.appId]) || game.gameName;
+                              showStatus(`Installing fix for ${displayName}...`, 'info');
+                              const res = await window.api.installOnlineFix(steamPath, game.appId, filePath);
+                              showStatus(res.message, res.success ? 'success' : 'error');
+                            }
+                          } else {
+                            showStatus('Please drop a valid .zip file!', 'error');
+                          }
+                        }}
+                      >
                         <div className="game-card-row">
                           <div className="game-card-info">
                             <div className="card-title" style={{ marginBottom: 2 }}>

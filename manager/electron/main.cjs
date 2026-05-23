@@ -49,6 +49,49 @@ ipcMain.handle('search-game', async (event, term) => {
   });
 });
 
+ipcMain.handle('install-online-fix', async (event, { steamPath, appId, zipPath }) => {
+  try {
+    const vdfPath = path.join(steamPath, 'steamapps', 'libraryfolders.vdf');
+    if (!fs.existsSync(vdfPath)) {
+      return { success: false, message: 'Could not find libraryfolders.vdf. Steam path may be invalid.' };
+    }
+
+    const vdfContent = fs.readFileSync(vdfPath, 'utf8');
+    const pathRegex = /"path"\s+"([^"]+)"/g;
+    let match;
+    let targetInstallDir = null;
+
+    while ((match = pathRegex.exec(vdfContent)) !== null) {
+      const libraryPath = match[1].replace(/\\\\/g, '\\');
+      const acfPath = path.join(libraryPath, 'steamapps', `appmanifest_${appId}.acf`);
+      
+      if (fs.existsSync(acfPath)) {
+        const acfContent = fs.readFileSync(acfPath, 'utf8');
+        const installDirMatch = acfContent.match(/"installdir"\s+"([^"]+)"/);
+        if (installDirMatch) {
+          targetInstallDir = path.join(libraryPath, 'steamapps', 'common', installDirMatch[1]);
+          break;
+        }
+      }
+    }
+
+    if (!targetInstallDir) {
+      return { success: false, message: `Could not find installation for AppID ${appId}. Make sure it is downloaded via Steam first.` };
+    }
+    if (!fs.existsSync(targetInstallDir)) {
+      return { success: false, message: `Install folder not found on disk at: ${targetInstallDir}` };
+    }
+
+    // Extract zip directly into target install dir
+    const zip = new AdmZip(zipPath);
+    zip.extractAllTo(targetInstallDir, true); // true = overwrite
+
+    return { success: true, message: `Successfully installed fix into: ${path.basename(targetInstallDir)}` };
+  } catch (err) {
+    return { success: false, message: 'Error applying fix: ' + err.message };
+  }
+});
+
 function createWindow() {
   mainWindow = new BrowserWindow({
     width: 520,

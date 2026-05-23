@@ -430,6 +430,19 @@ body {
   transform: translateY(-1px);
 }
 
+.game-card:hover {
+  background: var(--bg-card-hover);
+  transform: translateY(-2px);
+  border-color: rgba(255, 255, 255, 0.15);
+}
+
+.game-card.drag-hover {
+  border-color: var(--accent-cyan);
+  background: rgba(0, 240, 255, 0.1);
+  transform: scale(1.02);
+  box-shadow: 0 0 15px rgba(0, 240, 255, 0.2);
+}
+
 .btn-danger {
   background: linear-gradient(135deg, #ef4444, #f97316);
   color: #fff;

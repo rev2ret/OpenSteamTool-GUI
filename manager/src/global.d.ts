@@ -18,7 +18,8 @@ declare global {
       getFilePath: (file: File) => string;
       getSteamPath: () => Promise<string | null>;
       autoPatch: (steamPath: string) => Promise<{ success: boolean; message: string }>;
-      installMods: (steamPath: string, files: string[]) => Promise<{ success: boolean; message: string }>;
+      installMods: (steamPath: string, files: {name: string, path: string}[]) => Promise<{ success: boolean; message: string }>;
+      installOnlineFix: (steamPath: string, appId: string, zipPath: string) => Promise<{ success: boolean; message: string }>;
       downloadManifests: (steamPath: string, appid: string, dlcs: string[]) => Promise<{ success: boolean; message: string }>;
       lookupAppId: (appid: string) => Promise<{ success: boolean; name: string | null; dlcs: string[] }>;
       listInstalled: (steamPath: string) => Promise<InstalledGame[]>;
