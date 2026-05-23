@@ -50,6 +50,7 @@ body {
   justify-content: center;
   align-items: center;
   position: relative;
+  overflow: hidden;
 }
 
 /* ── Animated Background ───────────────────────────────────── */
@@ -76,16 +77,14 @@ body {
 .app-shell {
   position: relative;
   z-index: 1;
-  width: 480px;
-  max-height: 92vh;
+  width: 100%;
+  height: 100%;
   display: flex;
   flex-direction: column;
   background: var(--bg-surface);
-  border: 1px solid var(--border-subtle);
-  border-radius: var(--radius-lg);
-  box-shadow:
-    var(--shadow-glow),
-    0 25px 60px -12px rgba(0, 0, 0, 0.6);
+  border: none;
+  border-radius: 0;
+  box-shadow: none;
   backdrop-filter: blur(24px);
   -webkit-backdrop-filter: blur(24px);
   overflow: hidden;
@@ -577,10 +576,66 @@ body {
   to   { opacity: 1; }
 }
 
-/* ── Responsive ────────────────────────────────────────────── */
-@media (max-height: 600px) {
-  .app-shell { max-height: 98vh; }
-  .header { padding: 4px 24px 8px; }
-  .header-logo { font-size: 1.3rem; }
-  .tab-content-area { padding: 12px 16px; }
+/* ── Game Preview (Fetcher) ─────────────────────────────────── */
+.game-preview {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 10px;
+  padding: 8px 12px;
+  background: rgba(0, 0, 0, 0.2);
+  border-radius: var(--radius-sm);
+  font-size: 0.78rem;
+  color: var(--text-secondary);
+  animation: toastIn 0.3s var(--transition-smooth) both;
+}
+
+.game-preview-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.game-preview-dot.success { background: var(--accent-green); }
+.game-preview-dot.error { background: #ef4444; }
+
+/* ── Library ───────────────────────────────────────────────── */
+.library-header {
+  font-size: 0.72rem;
+  color: var(--text-muted);
+  margin-bottom: 10px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.game-card {
+  animation: toastIn 0.4s var(--transition-smooth) both;
+}
+
+.game-card-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 10px;
+}
+
+.game-card-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.game-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.game-meta {
+  display: flex;
+  gap: 12px;
+  font-size: 0.68rem;
+  color: var(--text-muted);
+  margin-top: 4px;
 }

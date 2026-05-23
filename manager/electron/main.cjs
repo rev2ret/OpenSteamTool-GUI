@@ -11,8 +11,7 @@ function createWindow() {
   mainWindow = new BrowserWindow({
     width: 520,
     height: 720,
-    minWidth: 420,
-    minHeight: 500,
+    resizable: false,
     webPreferences: {
       preload: path.join(__dirname, 'preload.cjs'),
       nodeIntegration: false,
@@ -70,7 +69,10 @@ ipcMain.handle('get-steam-path', async () => {
 ipcMain.handle('auto-patch', async (event, steamPath) => {
   return new Promise((resolve) => {
     try {
-      const releaseDir = path.join(__dirname, '../../build/Release');
+      const isPackaged = app.isPackaged;
+      const releaseDir = isPackaged 
+        ? path.join(process.resourcesPath, 'dlls')
+        : path.join(__dirname, '../../build/Release');
       const debugDir = path.join(__dirname, '../../build/Debug');
       const rootDir = path.join(__dirname, '../../');
       const dlls = ['OpenSteamTool.dll', 'dwmapi.dll', 'xinput1_4.dll'];
@@ -354,3 +356,26 @@ ipcMain.handle('remove-game', async (event, { steamPath, luaFile, depotIds }) =>
   }
 });
 
+ipcMain.handle('lookup-appid', async (event, appid) => {
+  return new Promise((resolve) => {
+    const url = `https://store.steampowered.com/api/appdetails?appids=${appid}`;
+    https.get(url, (res) => {
+      let data = '';
+      res.on('data', (chunk) => { data += chunk; });
+      res.on('end', () => {
+        try {
+          const json = JSON.parse(data);
+          if (json[appid] && json[appid].success) {
+            resolve({ success: true, name: json[appid].data.name });
+          } else {
+            resolve({ success: false, name: null });
+          }
+        } catch {
+          resolve({ success: false, name: null });
+        }
+      });
+    }).on('error', () => {
+      resolve({ success: false, name: null });
+    });
+  });
+});

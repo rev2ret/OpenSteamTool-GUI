@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import './index.css';
 
 type Tab = 'fetcher' | 'files' | 'library';
@@ -21,6 +21,9 @@ function App() {
   // Fetcher
   const [appId, setAppId] = useState('');
   const [isFetching, setIsFetching] = useState(false);
+  const [lookedUpName, setLookedUpName] = useState<string | null>(null);
+  const [isLooking, setIsLooking] = useState(false);
+  const lookupTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Files
   const [isDragging, setIsDragging] = useState(false);
@@ -28,6 +31,7 @@ function App() {
   // Library
   const [games, setGames] = useState<InstalledGame[]>([]);
   const [isLoadingLib, setIsLoadingLib] = useState(false);
+  const [gameNames, setGameNames] = useState<Record<string, string>>({});
 
   const showStatus = (msg: string, type: 'info' | 'success' | 'error' = 'info') => {
     setStatusMsg(msg);
@@ -37,8 +41,19 @@ function App() {
   const loadLibrary = useCallback(async () => {
     if (!steamPath) return;
     setIsLoadingLib(true);
-    const list = await window.api.listInstalled(steamPath);
-    setGames(list || []);
+    const list: InstalledGame[] = (await window.api.listInstalled(steamPath)) || [];
+    setGames(list);
+
+    // Resolve game names from Steam for any that have an appId
+    const namesToResolve = list.filter(g => g.appId && !gameNames[g.appId]);
+    for (const g of namesToResolve) {
+      if (!g.appId) continue;
+      const result = await window.api.lookupAppId(g.appId);
+      if (result.success && result.name) {
+        setGameNames(prev => ({ ...prev, [g.appId!]: result.name! }));
+      }
+    }
+
     setIsLoadingLib(false);
   }, [steamPath]);
 
@@ -47,7 +62,6 @@ function App() {
       if (window.api) {
         const path = await window.api.getSteamPath();
         setSteamPath(path);
-
         window.api.onPatchStatus?.((msg: string) => showStatus(msg, 'info'));
         window.api.onDownloadStatus?.((msg: string) => showStatus(msg, 'info'));
       }
@@ -58,6 +72,27 @@ function App() {
   useEffect(() => {
     if (activeTab === 'library' && steamPath) loadLibrary();
   }, [activeTab, steamPath, loadLibrary]);
+
+  // Auto-lookup game name when AppID changes
+  useEffect(() => {
+    setLookedUpName(null);
+    if (lookupTimer.current) clearTimeout(lookupTimer.current);
+
+    if (!appId.match(/^\d{3,}$/)) return; // need at least 3 digits
+
+    setIsLooking(true);
+    lookupTimer.current = setTimeout(async () => {
+      const result = await window.api.lookupAppId(appId);
+      if (result.success && result.name) {
+        setLookedUpName(result.name);
+      } else {
+        setLookedUpName(null);
+      }
+      setIsLooking(false);
+    }, 500);
+
+    return () => { if (lookupTimer.current) clearTimeout(lookupTimer.current); };
+  }, [appId]);
 
   // ── Handlers ──────────────────────────────────────────────
 
@@ -77,13 +112,13 @@ function App() {
 
   const handleFetch = async () => {
     if (!steamPath) { showStatus('Steam path not found.', 'error'); return; }
-    if (!appId.match(/^\d+$/)) { showStatus('AppID must be numeric (e.g. 271590).', 'error'); return; }
+    if (!appId.match(/^\d+$/)) { showStatus('AppID must be numeric.', 'error'); return; }
 
     setIsFetching(true);
-    showStatus('Searching database...', 'info');
+    showStatus(`Fetching ${lookedUpName || appId}...`, 'info');
     const result = await window.api.downloadManifests(steamPath, appId);
     showStatus(result.message, result.success ? 'success' : 'error');
-    if (result.success) setAppId('');
+    if (result.success) { setAppId(''); setLookedUpName(null); }
     setIsFetching(false);
   };
 
@@ -107,7 +142,8 @@ function App() {
 
   const handleRemoveGame = async (game: InstalledGame) => {
     if (!steamPath) return;
-    showStatus(`Removing ${game.gameName}...`, 'info');
+    const displayName = (game.appId && gameNames[game.appId]) || game.gameName;
+    showStatus(`Removing ${displayName}...`, 'info');
     const result = await window.api.removeGame(steamPath, game.luaFile, game.depotIds);
     showStatus(result.message, result.success ? 'success' : 'error');
     if (result.success) loadLibrary();
@@ -147,13 +183,11 @@ function App() {
             <div className="titlebar-dot yellow" />
             <div className="titlebar-dot green" />
           </div>
-          <h1>SafeSteamTools</h1>
         </div>
 
         {/* Header */}
         <div className="header">
           <div className="header-logo">SafeSteamTools</div>
-          <div className="header-sub">Automated patching · manifest fetcher · game library</div>
         </div>
 
         {/* Steam Path */}
@@ -191,7 +225,7 @@ function App() {
                   Auto-Fetcher
                 </div>
                 <div className="card-desc">
-                  Enter a Steam AppID to instantly download and install manifests from the community database.
+                  Enter a Steam AppID to instantly download and install manifests.
                 </div>
 
                 <div className="input-row">
@@ -211,26 +245,19 @@ function App() {
                     {isFetching ? <span className="spinner" /> : 'Fetch'}
                   </button>
                 </div>
-              </div>
 
-              <div className="card">
-                <div className="card-title">
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                    <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
-                  </svg>
-                  Quick Actions
-                </div>
-                <div className="card-desc">
-                  Inject compiled DLLs into Steam or restart Steam to apply changes.
-                </div>
-                <div className="actions-row">
-                  <button onClick={handleAutoPatch} disabled={!steamPath} className="btn btn-primary">
-                    Auto-Patch
-                  </button>
-                  <button onClick={handleRestart} disabled={!steamPath} className="btn btn-secondary">
-                    Restart Steam
-                  </button>
-                </div>
+                {/* Game name preview */}
+                {appId.match(/^\d{3,}$/) && (
+                  <div className="game-preview">
+                    {isLooking ? (
+                      <><span className="spinner" /> Looking up...</>
+                    ) : lookedUpName ? (
+                      <><span className="game-preview-dot success" />{lookedUpName}</>
+                    ) : (
+                      <><span className="game-preview-dot error" />Game not found</>
+                    )}
+                  </div>
+                )}
               </div>
             </div>
           )}
@@ -264,7 +291,6 @@ function App() {
                 <div className="card-desc">
                   Drop your <strong>.lua</strong> scripts and <strong>.manifest</strong> files here.
                   They will be automatically sorted into Steam's <code>config/lua</code> and <code>depotcache</code> folders.
-                  All other file types are safely ignored.
                 </div>
               </div>
             </div>
@@ -286,45 +312,41 @@ function App() {
                 </div>
               ) : (
                 <>
-                  <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginBottom: 10, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <div className="library-header">
                     <span>{games.length} game{games.length !== 1 ? 's' : ''} installed</span>
                     <button className="btn btn-secondary" style={{ padding: '5px 12px', fontSize: '0.7rem' }} onClick={loadLibrary}>
                       Refresh
                     </button>
                   </div>
-                  {games.map((game, i) => (
-                    <div
-                      className="card"
-                      key={game.luaFile}
-                      style={{ animationDelay: `${i * 0.06}s` }}
-                    >
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 10 }}>
-                        <div style={{ flex: 1, minWidth: 0 }}>
-                          <div className="card-title" style={{ marginBottom: 2 }}>
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ color: 'var(--accent-cyan)' }}>
-                              <polygon points="5 3 19 12 5 21 5 3"/>
-                            </svg>
-                            <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                              {game.gameName}
-                            </span>
+                  {games.map((game, i) => {
+                    const displayName = (game.appId && gameNames[game.appId]) || game.gameName;
+                    return (
+                      <div className="card game-card" key={game.luaFile} style={{ animationDelay: `${i * 0.06}s` }}>
+                        <div className="game-card-row">
+                          <div className="game-card-info">
+                            <div className="card-title" style={{ marginBottom: 2 }}>
+                              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ color: 'var(--accent-cyan)' }}>
+                                <polygon points="5 3 19 12 5 21 5 3"/>
+                              </svg>
+                              <span className="game-name">{displayName}</span>
+                            </div>
+                            <div className="game-meta">
+                              {game.appId && <span>AppID: {game.appId}</span>}
+                              <span>{game.depotIds.length} depot{game.depotIds.length !== 1 ? 's' : ''}</span>
+                              <span>{game.manifestCount} manifest{game.manifestCount !== 1 ? 's' : ''}</span>
+                            </div>
                           </div>
-                          <div style={{ display: 'flex', gap: 12, fontSize: '0.68rem', color: 'var(--text-muted)', marginTop: 4 }}>
-                            {game.appId && <span>AppID: {game.appId}</span>}
-                            <span>{game.depotIds.length} depot{game.depotIds.length !== 1 ? 's' : ''}</span>
-                            <span>{game.manifestCount} manifest{game.manifestCount !== 1 ? 's' : ''}</span>
-                          </div>
+                          <button
+                            className="btn btn-danger"
+                            style={{ padding: '6px 12px', fontSize: '0.7rem', flexShrink: 0 }}
+                            onClick={() => handleRemoveGame(game)}
+                          >
+                            Remove
+                          </button>
                         </div>
-                        <button
-                          className="btn btn-danger"
-                          style={{ padding: '6px 12px', fontSize: '0.7rem', flexShrink: 0 }}
-                          onClick={() => handleRemoveGame(game)}
-                          title="Remove this game's files"
-                        >
-                          Remove
-                        </button>
                       </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </>
               )}
             </div>

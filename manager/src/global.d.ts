@@ -17,6 +17,7 @@ declare global {
       autoPatch: (steamPath: string) => Promise<{ success: boolean; message: string }>;
       installMods: (steamPath: string, files: string[]) => Promise<{ success: boolean; message: string }>;
       downloadManifests: (steamPath: string, appid: string) => Promise<{ success: boolean; message: string }>;
+      lookupAppId: (appid: string) => Promise<{ success: boolean; name: string | null }>;
       listInstalled: (steamPath: string) => Promise<InstalledGame[]>;
       removeGame: (steamPath: string, luaFile: string, depotIds: string[]) => Promise<{ success: boolean; message: string }>;
       restartSteam: (steamPath: string) => Promise<{ success: boolean; message: string }>;
