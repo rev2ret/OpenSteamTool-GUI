@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import './index.css';
 
-type Tab = 'fetcher' | 'files' | 'library';
+type Tab = 'fetcher' | 'files' | 'library' | 'fixes';
 
 interface InstalledGame {
   luaFile: string;
@@ -26,8 +26,11 @@ function App() {
   const [searchResults, setSearchResults] = useState<{id: string, name: string}[]>([]);
   const [includeDlcs, setIncludeDlcs] = useState(true);
   const [isLooking, setIsLooking] = useState(false);
-  const [dragHoveredAppId, setDragHoveredAppId] = useState<string | null>(null);
   const lookupTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Fixes
+  const [selectedFixAppId, setSelectedFixAppId] = useState('');
+  const [isFixDragging, setIsFixDragging] = useState(false);
 
   // Files
   const [isDragging, setIsDragging] = useState(false);
@@ -208,6 +211,12 @@ function App() {
     </svg>
   );
 
+  const IconFixes = (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/>
+    </svg>
+  );
+
   // ── Render ────────────────────────────────────────────────
 
   return (
@@ -244,6 +253,9 @@ function App() {
           </button>
           <button className={`tab-btn ${activeTab === 'library' ? 'active' : ''}`} onClick={() => setActiveTab('library')}>
             {IconLibrary} Library
+          </button>
+          <button className={`tab-btn ${activeTab === 'fixes' ? 'active' : ''}`} onClick={() => setActiveTab('fixes')}>
+            {IconFixes} Fixes
           </button>
         </div>
 
@@ -404,39 +416,7 @@ function App() {
                   {games.map((game, i) => {
                     const displayName = (game.appId && gameNames[game.appId]) || game.gameName;
                     return (
-                      <div 
-                        className={`card game-card ${dragHoveredAppId === game.appId ? 'drag-hover' : ''}`}
-                        key={game.luaFile} 
-                        style={{ animationDelay: `${i * 0.06}s` }}
-                        onDragOver={(e) => {
-                          e.preventDefault();
-                          if (game.appId) setDragHoveredAppId(game.appId);
-                        }}
-                        onDragLeave={(e) => {
-                          e.preventDefault();
-                          setDragHoveredAppId(null);
-                        }}
-                        onDrop={async (e) => {
-                          e.preventDefault();
-                          setDragHoveredAppId(null);
-                          if (!steamPath || !game.appId) return;
-
-                          const files = Array.from(e.dataTransfer.files);
-                          const zipFile = files.find(f => f.name.toLowerCase().endsWith('.zip') || f.name.toLowerCase().endsWith('.rar') || f.name.toLowerCase().endsWith('.7z'));
-                          
-                          if (zipFile) {
-                            const filePath = window.api.getFilePath(zipFile);
-                            if (filePath && window.api.installOnlineFix) {
-                              const displayName = (game.appId && gameNames[game.appId]) || game.gameName;
-                              showStatus(`Installing fix for ${displayName}...`, 'info');
-                              const res = await window.api.installOnlineFix(steamPath, game.appId, filePath);
-                              showStatus(res.message, res.success ? 'success' : 'error');
-                            }
-                          } else {
-                            showStatus('Please drop a valid .zip file!', 'error');
-                          }
-                        }}
-                      >
+                      <div className="card game-card" key={game.luaFile} style={{ animationDelay: `${i * 0.06}s` }}>
                         <div className="game-card-row">
                           <div className="game-card-info">
                             <div className="card-title" style={{ marginBottom: 2 }}>
@@ -464,6 +444,74 @@ function App() {
                   })}
                 </>
               )}
+            </div>
+          )}
+
+          {/* ── FIXES TAB ─────────────────────────────────── */}
+          {activeTab === 'fixes' && (
+            <div className="tab-panel" key="fixes">
+              <div className="card" style={{ paddingBottom: '1.5rem' }}>
+                <div className="card-title">
+                  {IconFixes} Apply Online Fix
+                </div>
+                <div className="card-desc">
+                  Select a game and drop your <strong>.zip</strong> or <strong>.rar</strong> fix archive. SafeSteamTools will automatically extract it into the game's directory.
+                </div>
+                
+                <div style={{ marginBottom: '1.2rem', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                  <label style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>Target Game:</label>
+                  <select 
+                    className="input-field" 
+                    style={{ cursor: 'pointer', appearance: 'auto' }}
+                    value={selectedFixAppId}
+                    onChange={(e) => setSelectedFixAppId(e.target.value)}
+                  >
+                    <option value="" disabled>Select a game...</option>
+                    {games.map(g => (
+                      <option key={g.appId || g.luaFile} value={g.appId || ''}>
+                        {(g.appId && gameNames[g.appId]) || g.gameName} {g.appId ? `(${g.appId})` : ''}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div
+                  className={`drop-zone ${isFixDragging ? 'dragging' : ''}`}
+                  style={{ opacity: selectedFixAppId ? 1 : 0.5, pointerEvents: selectedFixAppId ? 'auto' : 'none' }}
+                  onDragOver={(e) => { e.preventDefault(); setIsFixDragging(true); }}
+                  onDragLeave={(e) => { e.preventDefault(); setIsFixDragging(false); }}
+                  onDrop={async (e) => {
+                    e.preventDefault();
+                    setIsFixDragging(false);
+                    if (!steamPath || !selectedFixAppId) return;
+
+                    const files = Array.from(e.dataTransfer.files);
+                    const zipFile = files.find(f => f.name.toLowerCase().endsWith('.zip') || f.name.toLowerCase().endsWith('.rar') || f.name.toLowerCase().endsWith('.7z'));
+                    
+                    if (zipFile) {
+                      const filePath = window.api.getFilePath(zipFile);
+                      if (filePath && window.api.installOnlineFix) {
+                        const targetGame = games.find(g => g.appId === selectedFixAppId);
+                        const displayName = targetGame ? ((targetGame.appId && gameNames[targetGame.appId]) || targetGame.gameName) : selectedFixAppId;
+                        showStatus(`Installing fix for ${displayName}...`, 'info');
+                        const res = await window.api.installOnlineFix(steamPath, selectedFixAppId, filePath);
+                        showStatus(res.message, res.success ? 'success' : 'error');
+                      }
+                    } else {
+                      showStatus('Please drop a valid .zip or .rar file!', 'error');
+                    }
+                  }}
+                >
+                  <div className="drop-content">
+                    <svg viewBox="0 0 24 24" width="40" height="40" stroke="currentColor" strokeWidth="1.5" fill="none">
+                      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                      <polyline points="17 8 12 3 7 8" />
+                      <line x1="12" y1="3" x2="12" y2="15" />
+                    </svg>
+                    <p>{selectedFixAppId ? <span>Drop <strong>.zip / .rar</strong> file here to install</span> : 'Please select a game first'}</p>
+                  </div>
+                </div>
+              </div>
             </div>
           )}
 
